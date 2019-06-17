@@ -13,7 +13,7 @@ setdatabaseconfig <- function(reload = FALSE, silent = FALSE){
     if(is.null(getOption("tradeflowsDB"))|reload){
         # Path to the databasesonfig.R file
         databaseconfig <- system.file("config/databaseconfig.R",
-                                      package="tradeflows")
+                                      package="tradeflows2018")
         message(paste("Loading database configuration from ",
                       databaseconfig))
         source(databaseconfig)
@@ -24,6 +24,8 @@ setdatabaseconfig <- function(reload = FALSE, silent = FALSE){
         }
     }
 }
+
+
 
 
 #' Control the presence of required columns in the

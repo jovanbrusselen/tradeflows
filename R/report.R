@@ -79,11 +79,11 @@ createreport <- function(tfdata,
                          productcodeinreport = NULL,
                          reporterinreport = NULL,
                          inputpath = system.file("templates",
-                                                 package="tradeflows"),
+                                                 package="tradeflows2018"),
                          outputdir = "reports",
                          encoding = "UTF-8",
                          toc = TRUE,
-                         keep_tex = FALSE){
+                         keep_tex = FALSE, query){
     # load optional packages
     require(ggplot2)
     require(reshape2)
@@ -176,7 +176,8 @@ createoverviewreport <- function(reporter_,
                                  tableread = "validated_flow_yearly",
                                  jfsqlevel = 2,
                                  fileprefix = gsub("\\..*","",template),
-                                 dataonly = FALSE, ...){
+                                 dataonly = FALSE,
+                                 productitto_ = FALSE, ...){
 
     message("Trade values are the same in raw flow and validated flow")
     message("The table read will have to be changed to validated_flow to access quantities")
@@ -201,10 +202,15 @@ createoverviewreport <- function(reporter_,
 
 
     # Load itto product names --------------------------------------------------------
-    message("Load local table from the package")
-    productitto <- tbl(DBread, "product_work") %>%
-        select(product = name_short, productcode = code) %>%
-        distinct()
+    # DEBUG_RAUL: The function would report an error if we try to acess the "product_work"
+    #   database, because there is no such data base on EFI's server.
+    #   So I created a condition under which this command is run or not:
+    if (productitto_ == TRUE){
+        message("Load local table from the package")
+        productitto <- tbl(DBread, "product_work") %>%
+            select(product = name_short, productcode = code) %>%
+            distinct()
+    }
 
     jfsqproductgroups <- classificationitto %>%
         select(productcode = productcodecomtrade,
@@ -289,7 +295,7 @@ createcompletenessreport <- function(productcode_,
                                      tableread  = "raw_flow_yearly",
                                      toc = TRUE, ...){
     #### Load data ####
-    rawtbl <- readdbtbl(tableread) %>%
+    rawtbl <- readdbproduct(productcode_ = productcode_, tableread = tableread) %>%
         # dplyr verbs executed on tbl objects are translated to SQL statements
         # have to use this underscore trick because of the non standard evaluation
         # see vignette("nse") for more information on this
@@ -318,6 +324,261 @@ createcompletenessreport <- function(productcode_,
                  ...)
 }
 
+#' Create risk reports for two or four digit products. This is still under development, don't rely on it.
+#' @param country A country's name as it is in the Comtrade Database
+#' @param inputpath A six digit product's code
+#' @param flow
+#' @param beginyear First Year to be processed
+#' @param endyear Last Year to be processed
+#' @param template name of the template file.
+#' @param tableread character name of a database table
+#' @param encoding, encoding of the template file. See also iconv
+#' @param ... arguments passed to \code{\link{createreport}()}
+
+#' @export
+creategroupriskreport <- function(country = c('USA'),productcode_ = '44', flow_ = c("Import"),
+                             beginyear = 2012, endyear = 2016,
+                             template =  "RiskTemp.Rmd",
+                             outputdir = "reports/Risk",
+                             tableread  = "validated_flow_yearly",
+                             toc = TRUE, ...){
+    #### Load the risk index data ####
+    risk <- read.csv(paste(system.file("config",
+                                       package="tradeflows2018"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
+
+    # Turns the 2 or 4 digits HS code provided into 6 digit
+    product <- productcode_
+    if(any(nchar(product) < 6) == TRUE){
+        fd_HS <- product[which(nchar(product) < 6)]
+        for(i in fd_HS){
+            if (nchar(i)==2){
+                product <- c(product, seq(from = as.numeric(i)*10000, to = as.numeric(i)*10000+9999, by =1))
+            } else if (nchar(i) == 4){
+                product <- c(product, seq(from = as.numeric(i)*100, to = as.numeric(i)*100+99, by =1))
+            }
+        }
+    }
+    # The time gap must be 5 years maximum
+    if ((endyear-beginyear+1)>5){
+        stop('Maximum time gap is 5 years')
+    }
+    # Only one country per report
+    if (length(country) > 1){
+        stop('The report only allows one coutry')
+    }
+
+    #Data base loading based on the query.
+    setdatabaseconfig(silent=TRUE)
+    db <- getOption("tradeflowsDB")
+    DBread <- src_mysql(user=db["user"], host=db["host"],
+                        password=db["password"], dbname=db["dbname"])
+    # In case EU28 is required
+    if (country == 'EU28'){
+        EU28 <- c('Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'France',
+                  'Germany', 'Greece', 'Hungary', 'Ireland', 'Italy', 'Latvia', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands',
+                  'Poland', 'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden', 'United Kingdom')
+        dtf <- tbl(DBread, 'validated_flow_yearly') %>%
+            filter(productcode %in% product &
+                       year >= beginyear & year <= endyear & reporter %in% EU28)  %>% collect()  %>%
+            # Change year to an integer
+            mutate(year = as.integer(year))
+    } else {
+        dtf <- tbl(DBread, 'validated_flow_yearly') %>%
+            filter(productcode %in% product &
+                       year >= beginyear & year <= endyear & reporter %in% country)  %>% collect()  %>%
+            # Change year to an integer
+            mutate(year = as.integer(year))
+    }
+
+    # Join the UN trade data with the risk indexes in two columns: "FTGA_Partner" and "FTGA_Reporter
+    dtf <- merge(dtf,risk, by.x = 'partner', by.y = 'Country')
+    dtf <- merge(dtf,risk, by.x = 'reporter', by.y = 'Country')
+    colnames(dtf)[29:30] <- c('FTGA_Partner','FTGA_Reporter')
+
+    # The Forest trends' risk index used here goes from 0 to 100. Thus, it is important to
+    # Compile it into categories. In this case, 6 categories were used:
+    # a: "No Data";
+    # b: "Very High Risk", 100 >= Risk > 80;
+    # c: "High Risk", 80 >= Risk > 60;
+    # d: "Medium Risk, 60 >= Risk > 40;
+    # e: "Low Risk", 40 >= Risk > 20;
+    # f: "Very Low Risk", 20 >= Risk >= 0.
+    dtf <- cbind(dtf, NA, NA)
+    colnames(dtf)[31:32] <- c('Partner_Risk', 'Reporter_Risk')
+
+    ## Convertion of FTGA risk index from numeric into the 'a' to 'f' categories
+    dtf$FTGA_Partner[which(is.na(dtf$FTGA_Partner)==T)] <- 999
+    dtf$Partner_Risk[which(dtf$FTGA_Partner <= 20)] <- 'f'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 20 & dtf$FTGA_Partner <= 40)] <- 'e'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 40 & dtf$FTGA_Partner <= 60)] <- 'd'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 60 & dtf$FTGA_Partner <= 80)] <- 'c'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 80& dtf$FTGA_Partner <= 100)] <- 'b'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner==999)] <- 'a'
+    dtf$FTGA_Reporter[which(is.na(dtf$FTGA_Reporter)==T)] <- 999
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter <= 20)] <- 'f'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 20 & dtf$FTGA_Reporter <= 40)] <- 'e'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 40 & dtf$FTGA_Reporter <= 60)] <- 'd'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 60 & dtf$FTGA_Reporter <= 80)] <- 'c'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 80& dtf$FTGA_Reporter <= 100)] <- 'b'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter==999)] <- 'a'
+
+    # This query variable is created to take the query inside the 'createreport' function
+    query <- list(country,productcode_,beginyear,endyear,flow_)
+
+    #### Create the report ####
+    createreport(tfdata = dtf,
+                 template = template,
+                 outputdir = outputdir,
+                 toc = toc,
+                 fileprefix = paste(productcode_,'_',country,"_Risk",sep = ''),
+                 filesuffix = paste0(beginyear, endyear), query = query,
+                 ...)
+}
+
+#' Create risk reports
+#' for the Risk indexes used see:
+#' https://www.forest-trends.org/wp-content/uploads/imported/national-governance-indicators-and-illegal-logging-dds-risks__marigold-norman-forest-trends-pdf.pdf
+#' the default values can be used for testing
+#'
+#' This function will generate reports any country and product in the comtrade database
+#' @param country A country's name as it is in the Comtrade Database
+#' @param inputpath A six digit product's code
+#' @param flow
+#' @param beginyear First Year to be processed
+#' @param endyear Last Year to be processed
+#' @param template name of the template file.
+#' @param tableread character name of a database table
+#' @param encoding, encoding of the template file. See also iconv
+#' @param ... arguments passed to \code{\link{createreport}()}
+#' @examples
+#' \dontrun{
+#' createriskreport()
+#' }
+#' @export
+createriskreport <- function(country = c('Finland'),productcode_ = '440110', flow_ = c("Import"),
+                                     beginyear = 2010, endyear = 2014,
+                                     template =  "Risk.Rmd",
+                                     outputdir = "reports/Risk",
+                                     tableread  = "validated_flow_yearly",
+                                     toc = TRUE, ...){
+    #### Load the risk index data ####
+    risk <- read.csv(paste(system.file("config",
+                                       package="tradeflows2018"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
+
+    # In case a four digit code is selected, the program ask for a 6 digits one
+    if(any(nchar(productcode_) < 6) == TRUE){
+       stop('Only 6 digits codes are allowed')
+    }
+    # Only one product per report
+    if (length(productcode_) > 1){
+        stop('Only 1 product per report')
+    }
+    # The time gap must be 5 years maximum
+    if ((endyear-beginyear+1)>5){
+        stop('Maximum time gap is 5 years')
+    }
+    # Only one country per report
+    if (length(country) > 1){
+        stop('The report only allows one coutry')
+    }
+
+    #Data base loading based on the query.
+    setdatabaseconfig(silent=TRUE)
+    db <- getOption("tradeflowsDB")
+    DBread <- src_mysql(user=db["user"], host=db["host"],
+                        password=db["password"], dbname=db["dbname"])
+    dtf <- tbl(DBread, 'validated_flow_yearly') %>%
+            filter(productcode %in% productcode_ &
+                       year >= beginyear & year <= endyear & reporter %in% country)  %>% collect()  %>%
+            # Change year to an integer
+            mutate(year = as.integer(year))
+
+
+    # Join the UN trade data with the risk indexes in two columns: "FTGA_Partner" and "FTGA_Reporter
+    dtf <- merge(dtf,risk, by.x = 'partner', by.y = 'Country')
+    dtf <- merge(dtf,risk, by.x = 'reporter', by.y = 'Country')
+    colnames(dtf)[29:30] <- c('FTGA_Partner','FTGA_Reporter')
+
+    # The Forest trends' risk index used here goes from 0 to 100. Thus, it is important to
+    # Compile it into categories. In this case, 6 categories were used:
+    # a: "No Data";
+    # b: "Very High Risk", 100 >= Risk > 80;
+    # c: "High Risk", 80 >= Risk > 60;
+    # d: "Medium Risk, 60 >= Risk > 40;
+    # e: "Low Risk", 40 >= Risk > 20;
+    # f: "Very Low Risk", 20 >= Risk >= 0.
+    dtf <- cbind(dtf, NA, NA)
+    colnames(dtf)[31:32] <- c('Partner_Risk', 'Reporter_Risk')
+
+    ## Convertion of FTGA risk index from numeric into the 'a' to 'f' categories
+    dtf$FTGA_Partner[which(is.na(dtf$FTGA_Partner)==T)] <- 999
+    dtf$Partner_Risk[which(dtf$FTGA_Partner <= 20)] <- 'f'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 20 & dtf$FTGA_Partner <= 40)] <- 'e'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 40 & dtf$FTGA_Partner <= 60)] <- 'd'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 60 & dtf$FTGA_Partner <= 80)] <- 'c'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner > 80& dtf$FTGA_Partner <= 100)] <- 'b'
+    dtf$Partner_Risk[which(dtf$FTGA_Partner==999)] <- 'a'
+    dtf$FTGA_Reporter[which(is.na(dtf$FTGA_Reporter)==T)] <- 999
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter <= 20)] <- 'f'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 20 & dtf$FTGA_Reporter <= 40)] <- 'e'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 40 & dtf$FTGA_Reporter <= 60)] <- 'd'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 60 & dtf$FTGA_Reporter <= 80)] <- 'c'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter > 80& dtf$FTGA_Reporter <= 100)] <- 'b'
+    dtf$Reporter_Risk[which(dtf$FTGA_Reporter==999)] <- 'a'
+
+    # This query variable is created to take the query inside the 'createreport' function
+    query <- list(country,productcode_,beginyear,endyear,flow_)
+
+    #### Create the report ####
+    createreport(tfdata = dtf,
+                 template = template,
+                 outputdir = outputdir,
+                 toc = toc,
+                 fileprefix = paste(productcode_,'_',country,"_Risk",sep = ''),
+                 filesuffix = paste0(beginyear, endyear), query = query,
+                 ...)
+}
+
+#' This function sets the colours for the plots created by the 'createriskreport' function
+#'
+#'
+#' @export
+Palette <- function(query,dtf){
+
+    # Setting the colour palette and Legend's labels based on the risk categories in the data base.
+    p <- unique(dtf$Partner_Risk)
+    palette <- c()
+    label <- c()
+    if(any(dtf$Partner_Risk == 'a') == T){
+        palette <- append(palette, 'black')
+        label <- append(label, 'No data')
+    }
+    if(any(dtf$Partner_Risk == 'b') == T){
+        palette <- append(palette, 'red')
+        label <- append(label,'Very High Risk')
+    }
+    if(any(dtf$Partner_Risk == 'c') == T){
+        palette <- append(palette, 'orange')
+        label <- append(label,'High Risk')
+    }
+    if(any(dtf$Partner_Risk == 'd') == T){
+        palette <- append(palette,'yellow')
+        label <- append(label,'Medium Risk')
+    }
+    if(any(dtf$Partner_Risk == 'e') == T){
+        palette <- append(palette,'greenyellow')
+        label <- append(label,'Low Risk')
+    }
+    if(any(dtf$Partner_Risk == 'f') == T){
+        palette <- append(palette,'green')
+        label <- append(label,'Very Low Risk')
+    }
+
+    list <- list(palette,label)
+    return(list)
+}
+
+
 
 #' Create a discrepancy report
 #'
@@ -336,7 +597,9 @@ creatediscrepancyreport <- function(productcode_, reporter_,
                                     outputdir = "reports/discrepancies",
                                     tableread = "raw_flow_yearly",
                                     toc = FALSE, ...){
-    dtf <- readdbtbl(tableread) %>%
+    ## DEBUG_RAUL: The function previously used was "readdbtbl", which does not work,
+    ##           it was replaced by "readdbproduct"
+    dtf <- readdbproduct(productcode_ = productcode_, tableread) %>%
         filter(productcode == productcode_ &
                    year >= beginyear & year <= endyear &
                    (reporter == reporter_ | partner == reporter_)) %>%
@@ -346,10 +609,22 @@ creatediscrepancyreport <- function(productcode_, reporter_,
     if(beginyear == 0) beginyear <- ""
     if(endyear == 9999) endyear <- ""
 
+    ## DEBUG_RAUL: The code used previously was:
+        # createreport(tfdata = dtf,
+        #          template = template,
+        #          productcode = productcode_,
+        #          reporter = reporter_,
+        #          outputdir = outputdir,
+        #          toc = toc,
+        #          fileprefix = "discrepancies",
+        #          filesuffix = paste0(beginyear, endyear),
+        #          ...)
+        # Since there is not such argument on the 'createreport' function as 'reporter', it was
+        # replaced by 'reporterinreport'
     createreport(tfdata = dtf,
                  template = template,
                  productcode = productcode_,
-                 reporter = reporter_,
+                 reporterinreport = reporter_,
                  outputdir = outputdir,
                  toc = toc,
                  fileprefix = "discrepancies",
@@ -416,7 +691,7 @@ trytocreateoverviewreports <- function(reporter,
 createcountryindex <- function(countries,
                                template = "countryindex.Rmd",
                                inputpath = system.file("templates",
-                                                       package="tradeflows"),
+                                                       package="tradeflows2018"),
                                outputdir = "reports/overview",
                                filename = "countryindex.html",
                                encoding = "UTF-8"){
@@ -451,7 +726,7 @@ createalloverviewreports <- function(tableread = "validated_flow_yearly",
 
 
 if (FALSE){
-    library(tradeflows)
+    library(tradeflows2018)
     ###################### #
     # Overview reports     #
     ###################### #
@@ -476,7 +751,7 @@ if (FALSE){
 #     pandoc: Cannot decode byte '\xfc': Data.Text.Encoding.Fusion.streamUtf8: Invalid UTF-8 stream
 #     Error: pandoc document conversion failed with error 1
 
-    createcompletenessreport(tradeflows::sawnwoodexample, outputdir = directory)
+    createcompletenessreport(tradeflows2018::sawnwoodexample, outputdir = directory)
     # report for the "black hole" dataset
     load("data-raw/comtrade/440799.RData")
     swd99 <- renamecolumns(dtf, "comtrade", "efi")

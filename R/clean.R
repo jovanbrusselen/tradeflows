@@ -15,9 +15,9 @@
 #' column_names
 #' @export
 renamecolumns <- function(dtf, sourcedb = "comtrade", destdb = "efi"){
-    column_names <- dplyr::filter(tradeflows::column_names,
-                                  !is.na(tradeflows::column_names[sourcedb]) &
-                                      !is.na(tradeflows::column_names[destdb]) )
+    column_names <- dplyr::filter(tradeflows2018::column_names,
+                                  !is.na(tradeflows2018::column_names[sourcedb]) &
+                                      !is.na(tradeflows2018::column_names[destdb]) )
     for (n in column_names[sourcedb][[1]]){
         # TODO: Verify that columns from sourcedb are in the dtf
         names(dtf)[names(dtf)==n] <-
@@ -140,14 +140,19 @@ filterworldeu28 <- function(dtf, verbose = FALSE){
 #' priceglobal <- tf %>%
 #'     extractprices(grouping = c("flow", "year", "unit"))
 #' }
+#' DEBUG_RAUL: the grouping argument shall be a list, and not a
+#' vector as it previous were
 #' @export
 extractprices <- function(dtf,
-                          grouping = c("flow", "regionreporter", "year", "unit"),
+                          grouping = list("flow", "regionreporter", "year", "unit"),
                           lowercoef= 0.5, uppercoef=2,
                           lowerquantile = 0.25, upperquantile = 0.75,
                           includeqestimates = TRUE){
     # Grouping variables should be present in the data frame
-    stopifnot(grouping %in% names(dtf))
+    # DEBUG_RAUL: stopifnot("region" %in% names(dtf))
+    #      there is no column named region, only regionpartner and regionreporter.
+    #      So the code was changed to detect if any of the columns have region on their names in somehow.
+    stopifnot(any(grepl("region",names(dtf))))
     # Price should be present in the data frame
     stopifnot("price" %in% names(dtf))
     if(identical(includeqestimates,FALSE)){ # Condition easier to understand for user of the function
@@ -166,7 +171,7 @@ extractprices <- function(dtf,
             filterworldeu28(verbose = TRUE)
     }
 
-    dtf %>%
+    dtf <- dtf %>%
         # Price should not be NA and not be infinite
         filter(!is.na(price) & !is.infinite(price)) %>%
         # Calculate yearly regional prices by unit and/or by other grouping variables
@@ -187,8 +192,10 @@ extractprices <- function(dtf,
                   # One could replace Inf by NA values
                   # weightedaverageprice2 = sum(price * tradevalue, na.rm=TRUE)/
                   #  sum(tradevalue, na.rm=TRUE),
-                  ) %>%
+        ) %>%
         arrange(desc(medianprice))
+
+    return(dtf)
 }
 
 
@@ -203,7 +210,7 @@ extractprices <- function(dtf,
 #' @export
 extractconversionfactors <- function(dtf,
                                      lowercoef = 1, uppercoef = 1,
-                                     grouping = c("flow", "regionreporter", "year", "unit"),
+                                     grouping = list("flow", "regionreporter", "year", "unit"),
                                      includeqwestimates=TRUE){
     if(includeqwestimates==FALSE){
         dtf <- dtf %>% filter(flag==0)
@@ -324,6 +331,10 @@ removeduplicatedflows <- function(dtf){
 #' @param column column names to select, NULL if all columns have to be selected
 #' Selected column names should at least include the identity columns which will be used
 #' used for the merge
+#' DEBUG_RAUL: After the execution of the "clean" function, many flow and flow code fields were not
+#'      consistent. It was due to the fact that this function (sawpreporterpartner) used to swap
+#'      only the flow and not the flow code. So I added some arguments in the mutate function below,
+#'      specifying that the flow codes should be swapped as well.
 #' @export
 swapreporterpartner <- function(dtf, column=c("reportercode", "partnercode","productcode",
                                               "flow","period","quantity","tradevalue")){
@@ -336,7 +347,10 @@ swapreporterpartner <- function(dtf, column=c("reportercode", "partnercode","pro
                reporteriso = partneriso) %>%
         mutate(flow = gsub("Import","aaaaaaa",flow),
                flow = gsub("Export","Import",flow),
-               flow = gsub("aaaaaaa","Export",flow))
+               flow = gsub("aaaaaaa","Export",flow),
+               flowcode = gsub(1,0,flowcode),
+               flowcode = gsub(2,1,flowcode),
+               flowcode = gsub(0,2,flowcode))
     if (!is.null(column)){
         swap <- swap %>%
             select_(.dots = column)
@@ -395,9 +409,9 @@ calculatediscrepancies <- function(dtf){
         mutate(discrq = quantitypartner - quantity,
                discrv = tradevaluepartner - tradevalue,
                reldiscrq = signif((quantitypartner - quantity)/
-                                            (quantity + quantitypartner),2),
+                                      (quantity + quantitypartner),2),
                reldiscrv = signif((tradevalue - tradevaluepartner)/
-                                            (tradevalue + tradevaluepartner),2))
+                                      (tradevalue + tradevaluepartner),2))
 }
 
 
@@ -475,8 +489,8 @@ joinpricecvfbounds <- function(dtf, price, conversionfactor){
 estimatequantity <- function(dtf){
     if(!"medianprice" %in% names(dtf)){
         stop("Price bounds are not present.
-    First add prices and conversion factors with the
-    joinpricecvfbounds() function")
+             First add prices and conversion factors with the
+             joinpricecvfbounds() function")
     }
 
     ### For all flows, calculate quantity estimates
@@ -540,7 +554,7 @@ estimatequantity <- function(dtf){
     # Put data frames back together
     dtf <- rbind(dtfq, dtfnoqw, dtfnoqnow)
     return(dtf)
-}
+    }
 
 
 #' Compare reporter and partner flow
@@ -560,6 +574,7 @@ estimatequantity <- function(dtf){
 #' @param dtf data frame
 #' @param periodbegin change this to global parameter
 #' @param periodend change this to global parameter
+#' @export
 choosereporterorpartner <- function(dtf,
                                     periodbegin=2009, periodend=2013,
                                     sdratiolimit = 0.8,
@@ -593,6 +608,7 @@ choosereporterorpartner <- function(dtf,
 #'
 #' @param dtf data frame
 #' @param choice a data frame of choice between reporter and partner
+#' @export
 replacebypartnerquantity <- function(dtf, choice, verbose = getOption("tradeflows.verbose",TRUE)){
     choice <- choice %>%
         select(reportercode, partnercode, favorpartner, flow)
@@ -733,7 +749,6 @@ clean <- function(dtf,
                   addmissingmirrorflow = TRUE,
                   outputalltables = FALSE,
                   includeqestimates = TRUE){
-
     ### Checks
     dtf %>% sanitycheck()
 
@@ -745,7 +760,9 @@ clean <- function(dtf,
         addregion
 
     ### Prepare conversion factors and prices
-    price <- extractprices(dtf, includeqestimates)
+    ### DEBUG_RAUL: It was needed to justify which extractprices funcion's parameter the "includeqestiimates"
+    ###    variable belongs to.
+    price <- extractprices(dtf, includeqestimates = includeqestimates)
     conversionfactor <- extractconversionfactors(dtf)
 
     ### Estimate quantity
@@ -755,7 +772,7 @@ clean <- function(dtf,
             "to take into account modifications to the weight performed based on ",
             "price bounds and conversion factors.")
     dtf <- dtf %>%
-        joinpricecvfbounds(price, conversionfactor) %>%
+        joinpricecvfbounds(price, conversionfactor =  conversionfactor) %>%
         estimatequantity() %>%
         addpartnerflow
     # Shave price has to be done before replacebypartnerquantity, if the flow is mirrored
@@ -766,7 +783,7 @@ clean <- function(dtf,
         dtf <- dtf %>% shaveprice()
     }
     if (replacebypartnerquantity){
-        choice <- choosereporterorpartner(dtf,sdratiolimit = 1 )
+        choice <- choosereporterorpartner(dtf,sdratiolimit = 1,periodbegin = 2013,periodend = 2016 )
         dtf <- dtf %>% replacebypartnerquantity(choice)
     }
     # Check if the number of rows has changed (it shouldn't)
@@ -811,15 +828,15 @@ cleanmonthly <- function(dtfmonthly,
 
     ### Prepare yearly conversion factors and prices
     message("\nIn an ideal world conversion factors, prices and choice table would be placed
-in a database table, and not recalculated each time from the raw_flow_yearly.
-We sacrificed a few seconds of execution time for an easier implementation.\n")
+            in a database table, and not recalculated each time from the raw_flow_yearly.
+            We sacrificed a few seconds of execution time for an easier implementation.\n")
     y <- clean(dtfyearly, outputalltables = TRUE)
 
     ### Prepare monthly data
     # Keep only columns usefull for R,
     # Those efi column names that are in config/column_names.csv
     columnsread <- names(dtfmonthly)[names(dtfmonthly) %in%
-                                   column_names$efi[column_names[,"raw_flow_monthly"]]]
+                                         column_names$efi[column_names[,"raw_flow_monthly"]]]
     dtfmonthly <- dtfmonthly %>%
         select_(.dots= columnsread) %>%
         removeduplicatedflows %>%
@@ -884,20 +901,22 @@ We sacrificed a few seconds of execution time for an easier implementation.\n")
 #' @param ... further arguments passed to the clean function
 #' @export
 cleandbproduct <- function(productcode, tableread, tablewrite, ...){
+
     checkdbcolumns(c(tableread, tablewrite))
     dtf <- readdbproduct(productcode, tableread = tableread)
 
     ### Remove database specific columns keep only columns usefull for R
     # Those efi column names that are in config/column_names.csv
     columnsread <- names(dtf)[names(dtf) %in%
-                                     column_names$efi[column_names[,tableread]]]
+                                  column_names$efi[column_names[,tableread]]]
     dtf <- dtf %>% select_(.dots= columnsread)
     dtf <- removeduplicatedflows(dtf)
     dtf <- clean(dtf, ...)
     # Remove column names added by the merge with price and conversionfactor tables
     # Keep only column names in the final table validated_flow
     # This is usefull for database output
-    columnswrite <- tradeflows::column_names$efi[column_names[,tablewrite]]
+
+    columnswrite <- tradeflows2018::column_names$efi[column_names[,tablewrite]]
     # Add or remove colum names here if needed
     # Remove lastchanged because is in the database
     # raw_flow table but we want the database to compute it again
@@ -912,6 +931,10 @@ cleandbproduct <- function(productcode, tableread, tablewrite, ...){
                            message =  c("Write to the database succeeded",
                                         "Write to the database failed"))
     result <- FALSE
+    dtf <- cbind(dtf,1)
+    colnames(dtf)[ncol(dtf)] <- 'old_id'
+    dtf$old_id <- dtf$id
+    dtf$id <- NA
     tryCatch(result <- writedbproduct(dtf, tablewrite),
              finally = message(dbmessage$message[dbmessage$result == result]))
 }

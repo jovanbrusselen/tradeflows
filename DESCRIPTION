@@ -1,4 +1,4 @@
-Package: tradeflows
+Package: tradeflows2018
 Title: Process forest products trade flow data from COMTRADE and COMEXT
 Version: 0.2.0
 Authors@R: c(
@@ -23,6 +23,7 @@ Suggests:
     stringr,
     rmarkdown,
     knitr,
-    eutradeflows
+    eutradeflows, 
+    reshape2
 VignetteBuilder: knitr
 RoxygenNote: 6.0.1

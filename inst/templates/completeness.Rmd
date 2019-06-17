@@ -63,7 +63,10 @@ productname <- tfdata2 %>%
 
 for(code in productname$classification){
     cat("\n\n__",code,":__ ", sep="")
-    cat(productname$product[productname$classification == code])
+    ## DEBUG_RAUL:
+        # Previous code: cat(productname$product[productname$classification == code])
+        # There is no such column called "product" in the productname data frame, so I changed it to product description.
+    cat(productname$productdescription[productname$classification == code])
 }
 ```
 

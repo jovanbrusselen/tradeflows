@@ -1,0 +1,331 @@
+```{r productname, results='asis', eval=TRUE}
+
+productname <- tfdata %>% 
+    select(classification, productdescription) %>%
+    arrange(classification) %>%
+    unique
+productname[productname=='H1'] <- '1'
+productname[productname=='H2'] <- '2'
+productname[productname=='H3'] <- '3'
+productname[productname=='H4'] <- '4'
+productname[productname=='H5'] <- '5'
+productname[productname=='H6'] <- '6'
+
+name <- productname$productdescription[productname$classification == max(productname$classification)]
+
+rm(productname)
+
+```
+
+---
+title: "Forest Products Trade Risk - Trade by `r query[[1]]` in HS `r query[[2]]` - `r name`"
+author: "European Forest Institute based on validated UN COMTRADE data"
+date: "Report produced `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  pdf_document:
+    toc: yes
+---
+
+## Introduction
+
+This report provides a rough assessment of potential cascading of forest legality risks throughout the wood chain of custody, as an effect of international forest products trade. This report was created from bilateral trade flow data in combination with national governance indicators.
+
+## Methodology
+
+One of the data services EFI offers to its network is the Forest Products Trade Flow Database. This database provides information on bilateral trade flows between 200 countries and any of their trade partners for over 300 forest-based product categories as coded by the World Custom Organization’s Harmonized System.
+
+The data are being kept up-to-date regularly and new ‘cleaned-up’ data are added as soon as the raw data become available from UN COMTRADE. The original data, contain some missing or erroneous trade flows. Using various estimation methods, it has been possible to assess general plausibility of trade flow data, to omit outliers and to re-estimate some of the missing information. When displaying validated data, trade flow data “reported by” one country can also mean that these flows have been estimated or corrected, and thus that these are different from the original data of the UN COMTRADE. 
+
+The core idea of this report is the combination of the bilateral trade flow data with National Governance Indicators as compiled and described by Norman et al. (2017).  This report provides a series of graphs and tables to elucidate how imports and exports of forest products by a reporting country are related with its trade partner countries’ governance indexes. An overview of commercial partners’ respective governance indicators is provided, as well as a comparison between imports and exports reported by the countries. 
+
+It is important to keep in mind that governance is a dynamic process yet that the actual situation as suggested by the indicator will lag behind reality, for better or for worse. The index is specified at national level, and the quality of governance may differ between regions at sub-national level. Legality risk also depends on the product under review, and some products are more likely made from wood originating from plantations. Third party certification of sustainable forest management and/or certification of legal origin for wood raw material could be seen as a low risk solution, off-setting legality risk from countries with important governance deficits. For detailed background on National Governance Indicators please refer to Norman et al. (2017). 
+
+The National Governance Indexes are classified into six broad risk categories, according to the following criteria:
+
+- No Data;
+
+- Very High Risk:  100 >= Norman et al. (2017) Index > 80;
+
+- High Risk:       80 >= Norman et al. (2017) Index > 60;
+
+- Medium Risk:     60 >= Norman et al. (2017) Index > 40;
+
+- Low Risk:        40 >= Norman et al. (2017) Index > 20;
+
+- Very Low Risk:   20 >= Norman et al. (2017) Index >= 0.
+
+\newpage
+
+
+```{r library, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(tradeflows2018)
+library(knitr)
+library(reshape2)
+library(ggplot2)
+options(digits = 4) #  Number of digits in knitr tables
+opts_chunk$set(echo=FALSE, message=FALSE)
+```
+
+## Product definitions
+For the given time period, countries reported data for product `r query[[2]]` according to the following definitions. When more than one definition is stated, this means that not all countries report their data according the latest classification and this implies that data compatibility issues need to be taken into account with data interpretation.
+
+```{r productdefinition, results='asis', eval=TRUE}
+
+productname <- tfdata %>% 
+    select(classification, productdescription) %>%
+    arrange(classification) %>%
+    unique
+productname[productname=='H1'] <- 'HS v. 1992'
+productname[productname=='H2'] <- 'HS v. 1996'
+productname[productname=='H3'] <- 'HS v. 2002'
+productname[productname=='H4'] <- 'HS v. 2007'
+productname[productname=='H5'] <- 'HS v. 2012'
+productname[productname=='H6'] <- 'HS v. 2017'
+
+for(code in productname$classification){
+    cat("\n\n__",code,":__ ", sep="")
+    ## DEBUG_RAUL:
+        # Previous code: cat(productname$product[productname$classification == code])
+        # There is no such column called "product" in the productname data frame, so I changed it to product description.
+    cat(productname$productdescription[productname$classification == code])
+}
+```
+
+\newpage
+
+## Overview for Trade Value
+
+The following plot shows the total trade value reported for imports by the selected country, and categorized by categories for trade partner legality risk.
+
+```{r TradeValue, results='asis', fig.height=5, fig.width=12}
+tfdata_import <- tfdata[tfdata$flow == 'Import',]
+colours <- Palette(query, tfdata_import)
+ggplot()+ 
+ geom_bar(data = tfdata_import, aes(x = year, y = tradevalue, fill = Partner_Risk), stat="identity") +
+ theme(legend.position="bottom", legend.direction="horizontal",legend.title = element_blank(), legend.text=element_text(size=12),
+       legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2,"cm")) + 
+ scale_fill_manual(values=colours[[1]],
+       labels = colours[[2]]) +   labs(x="Year", y="Trade Value (U$)") +   
+    ggtitle(paste('Overview of ',query[[1]],' imports by risk category of product ',query[[2]], sep = ''))
+
+```
+
+
+The following plot shows average unit prices (value per quantity unit) per legality risk category. This is to observe if differences in unit prices exist between risk categories. Only if the selected product category would be for a homogenous group of tree species, then some basic assumptions could be formed, where the basic assumption may be that the higher the risk, the lower the expected value per quantity unit.
+
+```{r TradeValueSecondPlot, results='asis', fig.height=5, fig.width=12}
+tfdata_import <- tfdata[tfdata$flow == 'Import',]
+colours <- Palette(query, tfdata_import)
+tfdata_import$tq <- round(tfdata_import$tradevalue/tfdata_import$quantity,2)
+tfdata_import_t <- select(tfdata_import, year, tq, Partner_Risk)
+
+melted <- melt(tfdata_import_t, c('year','Partner_Risk'))
+colours <- Palette(query, melted)
+global_average <- aggregate(. ~ year, melted[,-2:-3], mean)
+global_average$Partner_Risk <- '0'
+global_average$variable <- 'tq'
+global_average <- global_average[c('year','Partner_Risk','variable','value')]
+
+melted <- rbind(melted,global_average)
+
+ggplot()+ 
+    geom_bar(data = melted[melted$variable == 'tq',], aes(x = Partner_Risk, y =value, fill = Partner_Risk), 
+             stat="summary", position = 'stack', fun.y = "mean") +
+    theme(legend.position="bottom", legend.direction="horizontal",axis.text.x = element_blank(), legend.title = element_blank(), legend.text=element_text(size=12),
+          legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + facet_grid(~ year) + 
+    scale_fill_manual(values=c('navy',colours[[1]]),
+                      labels = c('Average Price',colours[[2]])) +  labs(x="Year", y=paste('U$/',unique(tfdata_import$unit))) +   
+    ggtitle(paste('Trade Value per Quantity for Imports of ', query[[2]],  ' in ',query[[1]], sep = ''))
+```
+\newpage
+Table 1 presents a summary of the trade value reported by `r query[[1]]` per Year. Table 2 presents the trade value split by Trade Partner and Trade Partner Risk.
+
+```{r TradeValueTables, results='asis', fig.height=5, fig.width=12}
+tfdata_import <- tfdata[tfdata$flow == 'Import',]
+colours <- Palette(query, tfdata_import)
+table <- tfdata_import %>% 
+    select(reporter,year, tradevalue, FTGA_Reporter) %>%
+    melt(c('reporter','year','FTGA_Reporter'))
+table[order(table$year), -4] %>% group_by(reporter,year,FTGA_Reporter) %>% summarize(cover = sum(value)) %>%
+    kable(col.names = c('Reporter','Year', 'Reporter Risk', 'Total Trade Value (U$)'), align = 'c', 
+          caption = paste("Total Trade Value Reported by ", query[[1]], " per Year"), row.names = F)
+
+
+table <- tfdata_import %>% 
+    select(partner,year, tradevalue, FTGA_Partner)
+table[order(table$partner,table$year),] %>%
+    kable(col.names = c('Partner','Year', 'Trade Value (U$)', 'Partner Risk'), align = 'c', 
+          caption = paste("Trade Value Reported by ", query[[1]], " by Partner and Year"), row.names = F)
+
+```
+
+\newpage
+
+## Risk Comparison For Trade Value
+
+Risk Comparison Trade Value means the comparison between the Imports and Exports reported by the selected country.
+Notice that values reported by the partner are never used. 
+
+
+```{r RQTradeValue, results='asis', fig.height=5, fig.width=12}
+tfdata_ImpExp <- tfdata[tfdata$flow == 'Import' |tfdata$flow == 'Export',]
+reporter_risk <- unique(tfdata_ImpExp$Reporter_Risk)
+tfdata_ImpExp_t <- select(tfdata_ImpExp, year, tradevalue, flow, Partner_Risk)
+melted <- melt(tfdata_ImpExp_t, c('year','flow','Partner_Risk'))
+
+melted$cat <- ''
+melted[melted$flow == 'Import',]$cat <- "Imports"
+melted[melted$flow == 'Export',]$cat <- "Exports"
+melted[melted$flow == 'Export',]$Partner_Risk <- reporter_risk
+colours <- Palette(query, melted)
+ggplot()+ 
+ geom_bar(data = melted, aes(x = cat, y = value, fill = Partner_Risk), stat="identity", position = 'stack') +
+        theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank(), legend.text=element_text(size=12),
+               legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + facet_grid(~ year) + 
+ scale_fill_manual(values=colours[[1]],
+       labels = colours[[2]]) +   labs(x="Year", y="Trade Value (U$)") +   
+    ggtitle(paste(query[[2]], "'s Exports and Imports Trade Value in ",query[[1]], sep = ''))
+
+tfdata_ImpExp <- tfdata[tfdata$flow == 'Re-Import' |tfdata$flow == 'Re-Export',]
+if(nrow(tfdata_ImpExp) >0){
+
+tfdata_ImpExp_t <- select(tfdata_ImpExp, year, tradevalue, flow, Partner_Risk)
+melted <- melt(tfdata_ImpExp_t, c('year','flow','Partner_Risk'))
+
+melted[melted == 'Re-Import'] <- "Re-Imports"
+melted[melted == 'Re-Export'] <- "Re-Exports"
+colours <- Palette(query, melted)
+ggplot()+ 
+ geom_bar(data = melted, aes(x = flow, y = value, fill = Partner_Risk), stat="identity", position = 'stack') +
+        theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank(), legend.text=element_text(size=12),
+               legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + facet_grid(~ year) + 
+ scale_fill_manual(values=colours[[1]],
+       labels = colours[[2]]) +   labs(x="Year", y="Trade Value (U$)") +   
+    ggtitle(paste(query[[2]], "'s Re-Exports and Re-Imports Trade Value in ",query[[1]], sep = ''))
+}
+
+```
+\newpage
+
+## Overview For Quantity
+
+The following plot shows the total quantity of imports reported by the selected country, colored by categories for trade partners legality risk. Note that the quantity may in cases differ from standard.
+
+
+```{r Quantity, results='asis', fig.height=5, fig.width=12}
+
+tfdata_import <- tfdata[tfdata$flow == 'Import',]
+i <-unique(tfdata_import$unit)
+colours <- Palette(query, tfdata_import)
+p <- ggplot()+ 
+        geom_bar(data = tfdata_import, aes(x = year, y = quantity, fill = Partner_Risk), stat="identity") +
+        theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank(), legend.text=element_text(size=12),
+               legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + 
+        scale_fill_manual(values=colours[[1]],
+            labels = colours[[2]]) +   labs(x="Year", y=i) +   
+        ggtitle(paste('Overview of ',query[[1]],' imports by risk category of product ',query[[2]], sep = ''))
+plot(p)
+```
+
+
+Table 3 shows a summary of the quantity of imports reported by `r query[[1]]` per Year. 
+Table 4 shows quantity split by Partner and Partner Risk.
+
+
+```{r QuantityTables, results='asis', fig.height=5, fig.width=12}
+tfdata_import <- tfdata[tfdata$flow == 'Import',]
+i <-unique(tfdata_import$unit)
+table <- tfdata_import %>% 
+select(reporter,year, quantity, FTGA_Reporter) %>%
+melt(c('reporter','year','FTGA_Reporter'))
+    
+table <- table[order(table$year), -4] %>% group_by(reporter,year,FTGA_Reporter) %>% summarize(cover = sum(value)) %>%
+kable(col.names = c('Reporter','Year', 'Reporter Risk', i), align = 'c', 
+          caption = paste("Total Quantity Reported by ", query[[1]], " per Year"), row.names = F)
+    
+print(table)
+      
+    
+table <- tfdata_import %>% 
+select(partner,year, quantity, FTGA_Partner) 
+table <- table[order(table$partner,table$year),]  %>% kable(col.names = c('Partner','Year', i, 'Partner Risk'), align = 'c', 
+      caption = paste("Total Quantity Reported by ", query[[1]], " by Partner per Year"), row.names = F)
+print(table)
+```
+\newpage
+
+## Risk Comparison for Quantity
+
+The following plot shows a comparison of imported and exported product quantities by the reporting country. If the reporting country has (data available for) re-exports and/or re-imports, then these will be shown in a consecutive plot.  While exports show trade of domestic goods, re-exports concern exports of foreign goods in the same state as previously imported; similarly, re-imports are goods imported in the same state as previously exported (UNSTAT, 2016).
+
+```{r RQQuantity, results='asis', fig.height=5, fig.width=12}
+tfdata_ImpExp <- tfdata[tfdata$flow == 'Import' |tfdata$flow == 'Export',]
+i <- unique(tfdata_ImpExp$unit)
+reporter_risk <- unique(tfdata_ImpExp$Reporter_Risk)
+tfdata_ImpExp_t <- select(tfdata_ImpExp, year, quantity, flow, Partner_Risk)
+melted <- melt(tfdata_ImpExp_t, c('year','flow','Partner_Risk'))
+
+melted$cat <- ''
+melted[melted$flow == 'Import',]$cat <- "Imports"
+melted[melted$flow == 'Export',]$cat <- "Exports"
+melted[melted$flow == 'Export',]$Partner_Risk <- reporter_risk
+
+colours <- Palette(query, melted)
+p <- ggplot()+ 
+    geom_bar(data = melted, aes(x = cat, y = value, fill = Partner_Risk), stat="identity", position = 'stack') +
+    theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank(), legend.text=element_text(size=12),
+        legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + facet_grid(~ year) +
+    scale_fill_manual(values=colours[[1]],
+        labels = colours[[2]]) +   labs(x="Year", y=i) +   
+        ggtitle(paste(query[[2]], "'s Exports and Imports Quantity in ",query[[1]], sep = ''))
+plot(p)
+
+
+tfdata_ImpExp <- tfdata[tfdata$flow == 'Re-Import' |tfdata$flow == 'Re-Export',]
+if(nrow(tfdata_ImpExp) >0){
+i <- unique(tfdata_ImpExp$unit)
+reporter_risk <- unique(tfdata_ImpExp$Reporter_Risk)
+tfdata_ImpExp_t <- select(tfdata_ImpExp, year, quantity, flow, Partner_Risk)
+melted <- melt(tfdata_ImpExp_t, c('year','flow','Partner_Risk'))
+
+melted[melted == 'Re-Import'] <- "Re-Imports"
+melted[melted == 'Re-Export'] <- "Re-Exports"
+
+colours <- Palette(query, melted)
+p <- ggplot()+ 
+    geom_bar(data = melted, aes(x = flow, y = value, fill = Partner_Risk), stat="identity", position = 'stack') +
+    theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank(), legend.text=element_text(size=12),
+        legend.spacing = unit(1, "cm"), legend.key.size = unit(1.2, "cm"),  legend.key.width = unit(1.2, "cm")) + facet_grid(~ year) +
+    scale_fill_manual(values=colours[[1]],
+        labels = colours[[2]]) +   labs(x="Year", y=i) +   
+        ggtitle(paste(query[[2]], "'s Re-Exports and Re-Imports Quantity in ",query[[1]], sep = ''))
+plot(p)
+}
+
+```
+\newpage
+
+## Disclaimer
+
+The data and information in this report are to be used as indicative only. By no means do the authors of this report imply any judgement on the legal origin of any specific produce. It is important to note that only detailed in-situ analysis can ascertain legal origin or legality status of a product and neither should this report replace or impede such assessment. It is advised to review caveats of the underlying methodological approaches also from the recommended references (see References).
+
+## Recommended citation
+
+Van Brusselen, J., Pires, R. de P. (`r format(Sys.time(), '%Y')`). Forest Products Trade Risk of Trade in HS `r query[[2]]` by `r query[[1]]` for the years `r query[[3]]` to `r query[[4]]`, based on validated UN COMTRADE data and Forest Trends governance indicator assessment of 2017. European Forest Institute. URL on `r format(Sys.time(), '%d %B, %Y')`: https://www.efi.int/knowledge/databases/fptf
+
+## References
+
+For more information on the United Nations Statistical Office’s database on international commercial trade (UN COMTRADE), read:
+
+  •	General info on COMTRADE: UNSTAT (2016). What is Comtrade? United Nations Statistical Office. URL accessed on 2019/04/24:                https://unstats.un.org/unsd/tradekb/Knowledgebase/50075/What-is-UN-Comtrade?Keywords=comtrade 
+
+  •	Info on Re-exports and Re-imports: UNSTAT (2016). Distinction between Exports and Re-exports / Imports and Re-imports. URL accessed on 2019/04/24: https://unstats.un.org/unsd/tradekb/Knowledgebase/Reexports-and-Reimports
+
+For more information on the EFI bilateral trade flow database, based on UN COMTRADE data, read:
+
+  •	Rougieux, P., Van Brusselen, J., Movrić, M., Kiljunen, J., Varis, S., Zudin, S. (2017). The Forest Products Trade Flow Database – A reproducible method and tool to support the analysis of international forest products trade. EFI Technical Report 100, 54pp.
+
+For more information regarding the National Governance Indicator used in this report, see:
+
+  •	Norman, M., Saunders, J., Canby, K. (2017). National Governance Indicators, Relevance for the Regulation of the Trade in Illegal Timber. Forest Trends, Information Brief.

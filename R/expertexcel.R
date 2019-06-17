@@ -202,7 +202,7 @@ if (FALSE){ #### Clean from raw RDATA files ####
 
 
 if(FALSE){ ### Clean from the database ####
-    library(tradeflows)
+    library(tradeflows2018)
     cleandb2excel(440799)
     # Would be nice to automate this file prefix with a function taking it from the JFSQ-2 code
     cleandb2excel(441114, "mdf441114.xlsx")
