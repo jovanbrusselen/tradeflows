@@ -115,7 +115,8 @@ createreport <- function(tfdata,
                                                                        toc = toc),
                                output_dir = outputdir,
                                output_file = filename,
-                               encoding = encoding),
+                               encoding = encoding,
+                               intermediates_dir = outputdir),
              finally = print("Finally"))
 }
 
@@ -479,7 +480,7 @@ createriskreport <- function(country = c('Finland'),productcode_ = '440110', flo
     }
     # Only one country per report
     if (length(country) > 1){
-        stop('The report only allows one coutry')
+        stop('The report only allows one country')
     }
 
     #Data base loading based on the query.
