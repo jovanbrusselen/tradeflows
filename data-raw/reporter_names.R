@@ -104,5 +104,5 @@ if (nrow(filter(reportercomtrade,duplicated(reportercode)))>0){
 #################################################### #
 # Save matching table for further use in the package #
 #################################################### #
-devtools::use_data(reportercomtrade, overwrite = TRUE)
+usethis::use_data(reportercomtrade, overwrite = TRUE)
 

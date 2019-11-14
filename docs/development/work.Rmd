@@ -69,8 +69,8 @@ Add packages to the list of required packages
 `devtools::use_package("dplyr")`
 `devtools::use_package("ggplot2", "suggests")`
 For data I followed his recommendations in r-pkgs/data.rmd
-`devtools::use_data(mtcars)`
-`devtools::use_data_raw()` # To create a data-raw/ folder and add it to .Rbuildignore
+`usethis::use_data(mtcars)`
+`usethis::use_data_raw()` # To create a data-raw/ folder and add it to .Rbuildignore
 
 
 ### Tests

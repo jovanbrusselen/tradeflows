@@ -4,7 +4,7 @@
 # Load from local database
 sawnwoodexample <- readdbproduct(440799, "raw_flow_yearly")
 # Save data frame for dissemination within the package
-devtools::use_data(sawnwoodexample, overwrite = TRUE)
+usethis::use_data(sawnwoodexample, overwrite = TRUE)
 
 # Alternative (long) load from Comtrade API
 # loadcomtradeallreporters(440799, path = "/tmp")

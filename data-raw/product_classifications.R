@@ -130,7 +130,7 @@ classificationcomtrade <- lapply(classificationcomtrade,
 ################################################# #
 # Save product classifications as package objects #
 ################################################# #
-devtools::use_data(classificationcomtrade,
+usethis::use_data(classificationcomtrade,
                    classificationitto,
                    overwrite = TRUE)
 
