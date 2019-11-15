@@ -59,7 +59,7 @@ The National Governance Indexes are classified into six broad risk categories, a
 
 ```{r library, echo=FALSE, warning=FALSE, message=FALSE}
 library(dplyr)
-library(tradeflows2018)
+library(tradeflows)
 library(knitr)
 library(reshape2)
 library(ggplot2)

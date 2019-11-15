@@ -1,4 +1,4 @@
-Package: tradeflows2018
+Package: tradeflows
 Title: Process forest products trade flow data from COMTRADE and COMEXT
 Version: 0.2.0
 Authors@R: c(

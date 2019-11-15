@@ -15,9 +15,9 @@
 #' column_names
 #' @export
 renamecolumns <- function(dtf, sourcedb = "comtrade", destdb = "efi"){
-    column_names <- dplyr::filter(tradeflows2018::column_names,
-                                  !is.na(tradeflows2018::column_names[sourcedb]) &
-                                      !is.na(tradeflows2018::column_names[destdb]) )
+    column_names <- dplyr::filter(tradeflows::column_names,
+                                  !is.na(tradeflows::column_names[sourcedb]) &
+                                      !is.na(tradeflows::column_names[destdb]) )
     for (n in column_names[sourcedb][[1]]){
         # TODO: Verify that columns from sourcedb are in the dtf
         names(dtf)[names(dtf)==n] <-
@@ -916,7 +916,7 @@ cleandbproduct <- function(productcode, tableread, tablewrite, ...){
     # Keep only column names in the final table validated_flow
     # This is usefull for database output
 
-    columnswrite <- tradeflows2018::column_names$efi[column_names[,tablewrite]]
+    columnswrite <- tradeflows::column_names$efi[column_names[,tablewrite]]
     # Add or remove colum names here if needed
     # Remove lastchanged because is in the database
     # raw_flow table but we want the database to compute it again

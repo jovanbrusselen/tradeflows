@@ -79,7 +79,7 @@ createreport <- function(tfdata,
                          productcodeinreport = NULL,
                          reporterinreport = NULL,
                          inputpath = system.file("templates",
-                                                 package="tradeflows2018"),
+                                                 package="tradeflows"),
                          outputdir = "reports",
                          encoding = "UTF-8",
                          toc = TRUE,
@@ -345,7 +345,7 @@ creategroupriskreport <- function(country = c('USA'),productcode_ = '44', flow_ 
                              toc = TRUE, ...){
     #### Load the risk index data ####
     risk <- read.csv(paste(system.file("config",
-                                       package="tradeflows2018"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
+                                       package="tradeflows"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
 
     # Turns the 2 or 4 digits HS code provided into 6 digit
     product <- productcode_
@@ -464,7 +464,7 @@ createriskreport <- function(country = c('Finland'),productcode_ = '440110', flo
                                      toc = TRUE, ...){
     #### Load the risk index data ####
     risk <- read.csv(paste(system.file("config",
-                                       package="tradeflows2018"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
+                                       package="tradeflows"), '/FGA.csv', sep = ''), sep = ',',header=T, row.names = NULL)
 
     # In case a four digit code is selected, the program ask for a 6 digits one
     if(any(nchar(productcode_) < 6) == TRUE){
@@ -692,7 +692,7 @@ trytocreateoverviewreports <- function(reporter,
 createcountryindex <- function(countries,
                                template = "countryindex.Rmd",
                                inputpath = system.file("templates",
-                                                       package="tradeflows2018"),
+                                                       package="tradeflows"),
                                outputdir = "reports/overview",
                                filename = "countryindex.html",
                                encoding = "UTF-8"){
@@ -727,7 +727,7 @@ createalloverviewreports <- function(tableread = "validated_flow_yearly",
 
 
 if (FALSE){
-    library(tradeflows2018)
+    library(tradeflows)
     ###################### #
     # Overview reports     #
     ###################### #
@@ -752,7 +752,7 @@ if (FALSE){
 #     pandoc: Cannot decode byte '\xfc': Data.Text.Encoding.Fusion.streamUtf8: Invalid UTF-8 stream
 #     Error: pandoc document conversion failed with error 1
 
-    createcompletenessreport(tradeflows2018::sawnwoodexample, outputdir = directory)
+    createcompletenessreport(tradeflows::sawnwoodexample, outputdir = directory)
     # report for the "black hole" dataset
     load("data-raw/comtrade/440799.RData")
     swd99 <- renamecolumns(dtf, "comtrade", "efi")

@@ -12,7 +12,7 @@ output:
 
 ```{r library, echo=FALSE, warning=FALSE, message=FALSE}
 library(dplyr)
-library(tradeflows2018)
+library(tradeflows)
 library(knitr)
 library(ggplot2)
 options(digits = 4) #  Number of digits in knitr tables
